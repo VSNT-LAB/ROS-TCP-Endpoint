@@ -14,6 +14,7 @@
 
 import rclpy
 import socket
+import time
 import json
 import sys
 import threading
@@ -164,7 +165,21 @@ class TcpServer(Node):
             executor.add_node(ros_node)
 
         self.executor = executor
-        executor.spin()
+        # Quando um cliente desconecta, o no dele e' removido embaixo do executor e o rclpy
+        # levanta InvalidHandle DE DENTRO do spin. Sem esta guarda o spin saia, o main()
+        # terminava e o PROCESSO MORRIA: a lancha sumia da rede ate' alguem relancar, e o
+        # operador via o cartao em ambar so' com o IP.
+        # Aqui a excecao derruba no maximo o ciclo: o executor volta a girar e continua
+        # servindo os demais clientes e topicos.
+        while rclpy.ok():
+            try:
+                executor.spin()
+                return
+            except Exception as e:
+                self.logerr(
+                    "executor: {} -- seguindo, o endpoint NAO morre por causa disto".format(e)
+                )
+                time.sleep(0.1)
 
     def unregister_node(self, old_node):
         if old_node is not None:
